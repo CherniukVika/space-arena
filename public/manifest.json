@@ -1,0 +1,30 @@
+{
+  "images": {
+    "sheet": "/sprites/sheet.png"
+  },
+  "sprites": {
+    "ship": {
+      "x": 0,
+      "y": 0,
+      "w": 64,
+      "h": 64
+    },
+    "bullet": {
+      "x": 64,
+      "y": 0,
+      "w": 64,
+      "h": 64
+    },
+    "asteroid": {
+      "x": 128,
+      "y": 0,
+      "w": 64,
+      "h": 64
+    }
+  },
+  "audio": {
+    "fired": "/audio/shoot.wav",
+    "hit": "/audio/hit.wav",
+    "exploded": "/audio/explode.wav"
+  }
+}

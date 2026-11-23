@@ -5,27 +5,22 @@ import { Entity } from "./entity.js";
 const TURN_SPEED = 3.5;
 const THRUST = 220;
 const DRAG = 0.6;
-const FIRE_COOLDOWN = 0.25; // сек
+const FIRE_COOLDOWN = 0.25;
 const BULLET_SPEED = 420;
 const MAX_HP = 3;
 
 export class Ship extends Entity {
 	#hp;
 	#fireCd = 0;
-	#respawnTimer = 0; // >0 = чекаємо респаун
+	#respawnTimer = 0;
 
-	/**
-	 * @param {number} x
-	 * @param {number} y
-	 * @param {object} [opts]
-	 * @param {boolean} [opts.isPlayer=true]
-	 */
-	constructor(x, y, { isPlayer = true } = {}) {
+	constructor(x, y, { isPlayer = true, name = "Pilot" } = {}) {
 		super({ x, y, radius: 18, kind: "ship" });
 		this.#hp = MAX_HP;
 		this.isPlayer = isPlayer;
+		this.name = name;
 		this.score = 0;
-		this.invulnerable = 0; // сек після респауну
+		this.invulnerable = 0;
 		this.homingShots = 0;
 	}
 
@@ -37,13 +32,6 @@ export class Ship extends Entity {
 		return this.#hp > 0 && this.#respawnTimer <= 0;
 	}
 
-	/**
-	 * Викликається з main / input.
-	 * @param {{ left: boolean, right: boolean, thrust: boolean, fire: boolean }} input
-	 * @param {number} dt
-	 * @param {import('../world.js').World} world
-	 * @param {{ width: number, height: number }} arena
-	 */
 	update(dt, world, input, arena) {
 		if (this.#respawnTimer > 0) {
 			this.#respawnTimer -= dt;
@@ -75,7 +63,6 @@ export class Ship extends Entity {
 		this.vel = this.vel.scale(k);
 
 		this.pos = this.pos.add(this.vel.scale(dt));
-		// wrap
 		this.pos = new Vector2(
 			((this.pos.x % arena.width) + arena.width) % arena.width,
 			((this.pos.y % arena.height) + arena.height) % arena.height,
@@ -88,12 +75,6 @@ export class Ship extends Entity {
 		}
 	}
 
-	/**
-	 * Створює кулю з носа корабля.
-	 * ВАЖЛИВО: this тут має бути Ship. Якщо передати ship.fire у addEventListener —
-	 * this буде window/undefined → баг. Див. README.
-	 * @param {import('../world.js').World} world
-	 */
 	fire(world) {
 		if (!this.isAlive) return;
 		const nose = this.pos.add(Vector2.fromAngle(this.angle, this.radius + 6));
@@ -104,21 +85,20 @@ export class Ship extends Entity {
 			homing: useHoming,
 		});
 		world.spawn(bullet);
+		world.bus?.emit("fired", { shipId: this.id, homing: useHoming });
 	}
 
 	heal(amount = 1) {
 		if (this.#respawnTimer > 0) return;
-		this.#hp = Math.min(3, this.#hp + amount);
+		this.#hp = Math.min(MAX_HP, this.#hp + amount);
 	}
 
-	/** Отримати урон. */
 	takeDamage(amount = 1) {
 		if (this.invulnerable > 0 || this.#respawnTimer > 0) return;
 		this.#hp -= amount;
 		if (this.#hp <= 0) {
 			this.#hp = 0;
-			this.#respawnTimer = 2; // респаун через 2 с
-			// вибух зробить World / collision system
+			this.#respawnTimer = 2;
 		}
 	}
 }

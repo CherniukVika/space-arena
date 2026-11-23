@@ -1,7 +1,4 @@
-import rocketUrl from "./assets/rocket.png";
-
 const ROCKET_HEIGHT = 64;
-const ROCKET_ROTATION = 0;
 
 function mulberry32(seed) {
 	return () => {
@@ -54,23 +51,11 @@ function createBackground(arena, dpr) {
 		g.arc(x, y, r, 0, Math.PI * 2);
 		g.fill();
 	}
-
-	for (let i = 0; i < 14; i++) {
-		const x = rand() * arena.width;
-		const y = rand() * arena.height;
-		const glow = g.createRadialGradient(x, y, 0, x, y, 9);
-		glow.addColorStop(0, "rgba(255, 255, 255, 0.95)");
-		glow.addColorStop(0.3, "rgba(180, 210, 255, 0.35)");
-		glow.addColorStop(1, "rgba(180, 210, 255, 0)");
-		g.globalAlpha = 1;
-		g.fillStyle = glow;
-		g.fillRect(x - 9, y - 9, 18, 18);
-	}
 	g.globalAlpha = 1;
 	return bg;
 }
 
-export function createRenderer(canvas, arena) {
+export function createRenderer(canvas, arena, assets) {
 	const ctx = canvas.getContext("2d");
 	const dpr = window.devicePixelRatio || 1;
 
@@ -81,9 +66,8 @@ export function createRenderer(canvas, arena) {
 	ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
 
 	const background = createBackground(arena, dpr);
-
-	const rocket = new Image();
-	rocket.src = rocketUrl;
+	const sheet = assets.images.sheet;
+	const frames = assets.manifest.sprites;
 
 	const lerp = (prev, cur, max, t) =>
 		Math.abs(cur - prev) > max / 2 ? cur : prev + (cur - prev) * t;
@@ -95,6 +79,20 @@ export function createRenderer(canvas, arena) {
 		};
 	}
 
+	function drawSprite(frame, size) {
+		ctx.drawImage(
+			sheet,
+			frame.x,
+			frame.y,
+			frame.w,
+			frame.h,
+			-size / 2,
+			-size / 2,
+			size,
+			size,
+		);
+	}
+
 	function drawShip(ship, alpha, thrusting) {
 		if (!ship.isAlive) return;
 		const { x, y } = interpPos(ship, alpha);
@@ -102,39 +100,36 @@ export function createRenderer(canvas, arena) {
 
 		ctx.save();
 		ctx.translate(x, y);
-
-		// Миготіння під час невразливості після респауну
 		if (ship.invulnerable > 0 && Math.floor(ship.invulnerable * 10) % 2 === 0) {
 			ctx.globalAlpha = 0.45;
 		}
-
 		ctx.rotate(angle);
 
-		const ready = rocket.complete && rocket.naturalWidth > 0;
 		const h = ROCKET_HEIGHT;
-		const w = ready
-			? (rocket.naturalWidth / rocket.naturalHeight) * h
-			: h * 0.5;
-
 		if (thrusting) {
 			const len = 18 + Math.random() * 14;
-			const flame = ctx.createLinearGradient(0, h / 2 - 4, 0, h / 2 + len);
+			const flame = ctx.createLinearGradient(0, h / 2 - 8, 0, h / 2 + len);
 			flame.addColorStop(0, "rgba(255, 240, 160, 0.95)");
 			flame.addColorStop(0.5, "rgba(255, 140, 30, 0.85)");
 			flame.addColorStop(1, "rgba(255, 60, 0, 0)");
 			ctx.fillStyle = flame;
 			ctx.beginPath();
-			ctx.moveTo(-w * 0.18, h / 2 - 4);
+			ctx.moveTo(-10, h / 2 - 8);
 			ctx.lineTo(0, h / 2 + len);
-			ctx.lineTo(w * 0.18, h / 2 - 4);
+			ctx.lineTo(10, h / 2 - 8);
 			ctx.closePath();
 			ctx.fill();
 		}
 
-		if (ready) {
-			ctx.rotate(ROCKET_ROTATION);
-			ctx.drawImage(rocket, -w / 2, -h / 2, w, h);
-		}
+		drawSprite(frames.ship, h);
+		ctx.restore();
+
+		// Ім'я пілота над кораблем
+		ctx.save();
+		ctx.fillStyle = "#94a3b8";
+		ctx.font = "11px monospace";
+		ctx.textAlign = "center";
+		ctx.fillText(ship.name ?? "Pilot", x, y - h * 0.62);
 		ctx.restore();
 	}
 
@@ -144,57 +139,29 @@ export function createRenderer(canvas, arena) {
 		ctx.save();
 		ctx.translate(x, y);
 		ctx.rotate(angle);
-
-		ctx.fillStyle = "#3a3f58";
-		ctx.strokeStyle = "#8a94b8";
-		ctx.lineWidth = 2;
-		ctx.beginPath();
-		const sides = 9;
-		for (let i = 0; i < sides; i++) {
-			const theta = (i / sides) * Math.PI * 2;
-			const jitter = 0.82 + ((i * 7 + a.id) % 5) * 0.06;
-			const r = a.radius * jitter;
-			const px = Math.cos(theta) * r;
-			const py = Math.sin(theta) * r;
-			if (i === 0) ctx.moveTo(px, py);
-			else ctx.lineTo(px, py);
-		}
-		ctx.closePath();
-		ctx.fill();
-		ctx.stroke();
+		drawSprite(frames.asteroid, a.radius * 2.4);
 		ctx.restore();
 	}
 
 	function drawBullet(b, alpha) {
 		const { x, y } = interpPos(b, alpha);
 		ctx.save();
-		ctx.fillStyle = b.homing ? "#ff5ef7" : "#66f7ff";
-		ctx.shadowColor = b.homing ? "#ff5ef7" : "#66f7ff";
-		ctx.shadowBlur = 8;
-		ctx.beginPath();
-		ctx.arc(x, y, b.radius, 0, Math.PI * 2);
-		ctx.fill();
+		ctx.translate(x, y);
+		if (b.homing) {
+			ctx.filter = "hue-rotate(110deg) saturate(2)";
+		}
+		drawSprite(frames.bullet, 24);
 		ctx.restore();
 	}
 
 	function drawPickup(p) {
 		const bob = Math.sin(p.bobPhase) * 3;
-		const x = p.pos.x;
-		const y = p.pos.y + bob;
-		const colors = {
-			score: "#ffd166",
-			heal: "#06d6a0",
-			homing: "#ef476f",
-		};
-		const labels = {
-			score: "+50",
-			heal: "+HP",
-			homing: "HOM",
-		};
+		const colors = { score: "#ffd166", heal: "#06d6a0", homing: "#ef476f" };
+		const labels = { score: "+50", heal: "+HP", homing: "HOM" };
 		const color = colors[p.pickupType] ?? "#ffffff";
 
 		ctx.save();
-		ctx.translate(x, y);
+		ctx.translate(p.pos.x, p.pos.y + bob);
 		ctx.strokeStyle = color;
 		ctx.fillStyle = "rgba(15, 20, 40, 0.85)";
 		ctx.lineWidth = 2;

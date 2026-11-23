@@ -4,31 +4,20 @@ import { Pickup } from "./entities/pickup.js";
 import { Vector2 } from "./math/vector2.js";
 import { circleCircle } from "./systems/collision.js";
 
-const MIN_ASTEROIDS = 5;
-
-/**
- * Сховище сутностей поверх Map<id, Entity>.
- */
 export class World {
-	/** @type {Map<number, import('./entities/entity.js').Entity>} */
 	#entities = new Map();
 
-	/** @param {{ width: number, height: number }} arena */
-	constructor(arena) {
+	constructor(arena, { bus = null, minAsteroids = 5 } = {}) {
 		this.arena = arena;
+		this.bus = bus;
+		this.minAsteroids = minAsteroids;
 	}
 
-	/**
-	 * @template {import('./entities/entity.js').Entity} T
-	 * @param {T} entity
-	 * @returns {T}
-	 */
 	spawn(entity) {
 		this.#entities.set(entity.id, entity);
 		return entity;
 	}
 
-	/** @param {number | import('./entities/entity.js').Entity} idOrEntity */
 	despawn(idOrEntity) {
 		const id = typeof idOrEntity === "number" ? idOrEntity : idOrEntity.id;
 		const e = this.#entities.get(id);
@@ -45,7 +34,6 @@ export class World {
 		}
 	}
 
-	/** @param {string} kind */
 	*ofKind(kind) {
 		for (const e of this.#entities.values()) {
 			if (!e.dead && e.kind === kind) yield e;
@@ -56,17 +44,12 @@ export class World {
 		return this.#entities.size;
 	}
 
-	/**
-	 * @param {number} dt
-	 * @param {{ input?: object, player?: import('./entities/ship.js').Ship }} [ctx]
-	 */
 	step(dt, ctx = {}) {
 		const { input, player } = ctx;
 
-		// Підтримуємо мінімальну кількість астероїдів на арені
 		let asteroidCount = 0;
 		for (const _ of this.ofKind("asteroid")) asteroidCount++;
-		while (asteroidCount < MIN_ASTEROIDS) {
+		while (asteroidCount < this.minAsteroids) {
 			this.spawnEdgeAsteroid(player);
 			asteroidCount++;
 		}
@@ -89,7 +72,6 @@ export class World {
 
 		resolveCollisions(this, player);
 
-		// Sweep: видаляємо позначені як dead сутності наприкінці кроку
 		for (const [id, e] of this.#entities) {
 			if (e.dead) this.#entities.delete(id);
 		}
@@ -125,11 +107,6 @@ function wrap(pos, arena) {
 	);
 }
 
-/**
- * Наївні O(n²) коло-коло колізії.
- * @param {World} world
- * @param {import('./entities/ship.js').Ship | undefined} player
- */
 function resolveCollisions(world, player) {
 	const ships = [...world.ofKind("ship")];
 	const bullets = [...world.ofKind("bullet")];
@@ -144,6 +121,11 @@ function resolveCollisions(world, player) {
 				b.markDead();
 				a.markDead();
 				spawnExplosion(world, a.pos.x, a.pos.y, 14);
+				world.bus?.emit("exploded", {
+					x: a.pos.x,
+					y: a.pos.y,
+					target: "asteroid",
+				});
 				if (player && b.ownerId === player.id) {
 					player.score += 10;
 				}
@@ -156,7 +138,7 @@ function resolveCollisions(world, player) {
 		}
 	}
 
-	// куля ↔ корабель (чужий)
+	// куля ↔ корабель
 	for (const b of bullets) {
 		for (const s of ships) {
 			if (b.dead || s.dead || b.ownerId === s.id) continue;
@@ -171,6 +153,11 @@ function resolveCollisions(world, player) {
 					s.pos.y,
 					wasAlive && !s.isAlive ? 24 : 8,
 				);
+				world.bus?.emit(wasAlive && !s.isAlive ? "exploded" : "hit", {
+					x: s.pos.x,
+					y: s.pos.y,
+					target: "ship",
+				});
 			}
 		}
 	}
@@ -187,6 +174,13 @@ function resolveCollisions(world, player) {
 				spawnExplosion(world, a.pos.x, a.pos.y, 10);
 				if (wasAlive && !s.isAlive) {
 					spawnExplosion(world, s.pos.x, s.pos.y, 26);
+					world.bus?.emit("exploded", {
+						x: s.pos.x,
+						y: s.pos.y,
+						target: "ship",
+					});
+				} else {
+					world.bus?.emit("hit", { x: s.pos.x, y: s.pos.y, target: "ship" });
 				}
 			}
 		}
@@ -200,6 +194,7 @@ function resolveCollisions(world, player) {
 			if (circleCircle(s.pos, s.radius, p.pos, p.radius)) {
 				p.markDead();
 				applyPickup(s, p);
+				world.bus?.emit("hit", { x: p.pos.x, y: p.pos.y, target: "pickup" });
 			}
 		}
 	}
