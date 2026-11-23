@@ -5,11 +5,12 @@ const MAP = {
 	KeyD: "right",
 	ArrowUp: "thrust",
 	KeyW: "thrust",
-	Space: "thrust",
+	Space: "fire",
+	KeyF: "fire",
 };
 
 export function createInput(target = window) {
-	const down = new Set(); // приватний стан, недоступний ззовні
+	const down = new Set();
 
 	const onKeyDown = (e) => {
 		const action = MAP[e.code];
@@ -32,6 +33,7 @@ export function createInput(target = window) {
 			left: down.has("left"),
 			right: down.has("right"),
 			thrust: down.has("thrust"),
+			fire: down.has("fire"),
 		}),
 		dispose() {
 			target.removeEventListener("keydown", onKeyDown);
